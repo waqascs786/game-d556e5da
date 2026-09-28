@@ -62,7 +62,7 @@ jobs:
             grep "kotlin.android" android/settings.gradle || true
           fi
           if [ -f android/app/build.gradle ]; then
-            sed -i.bak -E 's/(minSdkVersion|minSdk) flutter\.minSdkVersion/\1 23/' android/app/build.gradle
+            sed -i.bak -E 's/^([[:space:]]*)(minSdkVersion|minSdk)[[:space:]]*(=[[:space:]]*)?flutter\.minSdkVersion/\1\2 = 23/' android/app/build.gradle
             rm -f android/app/build.gradle.bak
             grep -n "minSdk" android/app/build.gradle || true
           fi
