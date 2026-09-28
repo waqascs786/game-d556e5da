@@ -672,7 +672,7 @@ jobs:
           print("Runner configuration IDs:", cfg_ids)
           for cid in cfg_ids:
               cm = re.search(
-                  re.escape(cid) + r" /\* \w+ \*/ = \{\n\t\t\tisa = XCBuildConfiguration;\n(\t\t\tbaseConfigurationReference = [^;]+;\n)?\t\t\tbuildSettings = \{(.*?)\n\t\t\};",
+                  re.escape(cid) + r" /\* \w+ \*/ = \{\n\t\t\tisa = XCBuildConfiguration;\n(\t\t\tbaseConfigurationReference = [^;]+;\n)?\t\t\tbuildSettings = \{(.*?)\n\t\t\t\};",
                   c,
                   re.S,
               )
@@ -697,6 +697,10 @@ jobs:
           c = c.replace('CODE_SIGN_IDENTITY = "Apple Development";', 'CODE_SIGN_IDENTITY = "' + DIST_IDENTITY + '";')
           with open(pbx, "w") as f:
               f.write(c)
+          # verify every patched config has DEVELOPMENT_TEAM inside buildSettings braces
+          inside = len(re.findall(r"buildSettings = \{[^}]*DEVELOPMENT_TEAM = " + re.escape(TEAM), c, re.S))
+          if inside < 3:
+              print("::error::DEVELOPMENT_TEAM not found inside buildSettings for all configs (%d/3)" % inside); sys.exit(1)
           print("Xcode project patched for manual signing. Sign settings now:")
           for line in c.splitlines():
               if "CODE_SIGN_STYLE" in line or "DEVELOPMENT_TEAM" in line or "PROVISIONING_PROFILE_SPECIFIER" in line or "CODE_SIGN_IDENTITY" in line:
@@ -725,6 +729,19 @@ jobs:
           P12_B64=$(base64 -i ~/asc/dist.p12 | tr -d "\n")
           gh secret set IOS_DIST_P12_B64 --repo "${{ github.repository }}" --body "$P12_B64"
           gh secret set IOS_DIST_CERT_ID --repo "${{ github.repository }}" --body "${{ steps.signing.outputs.cert_id }}"
+
+      - name: Probe Xcode build settings
+        run: |
+          set +e
+          echo "=== xcodebuild -list ==="
+          xcrun xcodebuild -list -project ios/Runner.xcodeproj 2>&1 | tail -15
+          echo "=== showBuildSettings (key values) ==="
+          xcrun xcodebuild -project ios/Runner.xcodeproj -scheme Runner -configuration Release -destination "generic/platform=iOS" -showBuildSettings > /tmp/sbs.log 2>&1
+          echo "sbs exit=$?"
+          grep -E "^    (DEVELOPMENT_TEAM|CODE_SIGN_STYLE|PROVISIONING_PROFILE_SPECIFIER|CODE_SIGN_IDENTITY|PRODUCT_BUNDLE_IDENTIFIER) = " /tmp/sbs.log | sort -u
+          echo "=== xcodebuild errors (if any) ==="
+          grep -iE "error" /tmp/sbs.log | head -10
+          true
 
       - name: Build release IPA
         run: |
