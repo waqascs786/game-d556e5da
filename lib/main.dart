@@ -22,7 +22,7 @@ void main() async {
                 messagingSenderId: '311998863107',
                 projectId: 'trivianinja-bff5c',
                 storageBucket: 'trivianinja-bff5c.firebasestorage.app',
-                iosBundleId: 'com.quizninja.game',
+                iosBundleId: 'com.schoolteaching.iosapp',
               )
             : const FirebaseOptions(
                 apiKey: 'AIzaSyAzN4vJZlYmGVzm8sCsz1bEPawQEiKIc6k',
