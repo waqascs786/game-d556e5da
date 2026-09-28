@@ -255,6 +255,8 @@ jobs:
     runs-on: macos-26
     permissions:
       contents: write
+    outputs:
+      ipa_url: ${{ steps.ipa_release.outputs.ipa_url }}
     env:
       IOS_BUNDLE_ID: "com.schoolteaching.iosapp"
       APP_DISPLAY_NAME: "School Teaching Class"
@@ -821,6 +823,24 @@ jobs:
           }
           ls -la build/ios/ipa/*.ipa
 
+      - name: Create GitHub Release with IPA
+        id: ipa_release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          IPA=$(ls build/ios/ipa/*.ipa | head -1)
+          cp "$IPA" /tmp/app-release.ipa
+          TAG="ios-release-${{ github.event.inputs.game_id }}"
+          gh release delete "$TAG" --repo "${{ github.repository }}" -y 2>/dev/null || true
+          gh release create "$TAG" \
+            --repo "${{ github.repository }}" \
+            --title "iOS Release IPA: ${{ github.event.inputs.game_name }}" \
+            --notes "Release IPA for ${{ github.event.inputs.game_name }}" \
+            /tmp/app-release.ipa
+          IPA_URL="https://github.com/${{ github.repository }}/releases/download/$TAG/app-release.ipa"
+          echo "ipa_url=$IPA_URL" >> $GITHUB_OUTPUT
+          echo "IPA release: $IPA_URL"
+
       - name: Upload to TestFlight
         run: |
           set -o pipefail
@@ -925,7 +945,7 @@ jobs:
           REPORTEOF
 
   notify:
-    needs: [build-ios]
+    needs: [build-ios, build-ios-release]
     if: always() && needs.build-ios.result == 'success'
     runs-on: ubuntu-latest
     steps:
@@ -939,15 +959,19 @@ jobs:
           user_email = os.environ["USER_EMAIL"]
           appetize_url = os.environ["APPETIZE_URL"]
           ios_url = os.environ.get("IOS_URL", "")
+          ipa_url = os.environ.get("IPA_URL", "")
           game_id = os.environ["GAME_ID"]
           gmail_pass = os.environ["GMAIL_APP_PASSWORD"]
           html = "<h2>Your iOS build is ready!</h2>"
           html += "<p><b>" + game_name + "</b> iOS simulator build is ready.</p>"
           html += "<h3>Live Preview</h3>"
           html += "<p><b>iOS:</b> <a href='" + appetize_url + "'>" + appetize_url + "</a></p>"
-          if ios_url:
+          if ios_url or ipa_url:
               html += "<h3>Download</h3>"
+          if ios_url:
               html += "<p><b>iOS Simulator:</b> <a href='" + ios_url + "'>Download Build</a></p>"
+          if ipa_url:
+              html += "<p><b>iOS Release IPA:</b> <a href='" + ipa_url + "'>Download IPA</a></p>"
           html += "<hr><p><small>Game ID: " + game_id + "</small></p>"
           msg = MIMEMultipart("alternative")
           msg["Subject"] = "iOS Build Ready: " + game_name
@@ -970,6 +994,7 @@ jobs:
           GAME_ID: ${{ github.event.inputs.game_id }}
           IOS_KEY: ${{ needs.build-ios.outputs.public_key }}
           IOS_URL: ${{ needs.build-ios.outputs.ios_url }}
+          IPA_URL: ${{ needs.build-ios-release.outputs.ipa_url }}
         run: |
           if [ -z "$USER_EMAIL" ]; then
             echo "No user email, skipping notification"
@@ -988,11 +1013,15 @@ jobs:
         env:
           IOS_KEY: ${{ needs.build-ios.outputs.public_key }}
           IOS_URL: ${{ needs.build-ios.outputs.ios_url }}
+          IPA_URL: ${{ needs.build-ios-release.outputs.ipa_url }}
         run: |
           echo "=========================================="
           echo "  iOS BUILD COMPLETE!"
           echo "=========================================="
           echo "iOS Preview: https://appetize.io/app/$IOS_KEY"
           echo "iOS Download: $IOS_URL"
+          if [ -n "$IPA_URL" ]; then
+            echo "iOS Release IPA: $IPA_URL"
+          fi
           echo "=========================================="
           echo "::notice::iOS Preview: https://appetize.io/app/$IOS_KEY"
