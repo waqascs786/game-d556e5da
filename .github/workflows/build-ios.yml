@@ -19,7 +19,7 @@ on:
 
 jobs:
   build-ios:
-    runs-on: macos-14
+    runs-on: macos-26
     permissions:
       contents: write
     outputs:
@@ -31,7 +31,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: 3.27.4
+          flutter-version: 3.44.8
           channel: stable
 
       - name: Save source files
@@ -241,7 +241,7 @@ jobs:
 
   build-ios-release:
     if: github.event.inputs.ios_release == 'true'
-    runs-on: macos-14
+    runs-on: macos-26
     permissions:
       contents: write
     env:
@@ -261,7 +261,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: 3.27.4
+          flutter-version: 3.44.8
           channel: stable
 
       - name: Save source files
@@ -703,6 +703,18 @@ jobs:
           inside = len(re.findall(r"buildSettings = \{[^}]*DEVELOPMENT_TEAM = " + re.escape(TEAM), c, re.S))
           if inside < 3:
               print("::error::DEVELOPMENT_TEAM not found inside buildSettings for all configs (%d/3)" % inside); sys.exit(1)
+          # App Store Connect rejects deployment targets below iOS 13
+          c = re.sub(r"IPHONEOS_DEPLOYMENT_TARGET = 1[0-2]\.[0-9]+;", "IPHONEOS_DEPLOYMENT_TARGET = 13.0;", c)
+          with open(pbx, "w") as f:
+              f.write(c)
+          if os.path.exists("ios/Podfile"):
+              with open("ios/Podfile") as f:
+                  pfc = f.read()
+              pfc2 = re.sub(r"platform :ios, '1[0-2]\.[0-9]+'", "platform :ios, '13.0'", pfc)
+              if pfc2 != pfc:
+                  with open("ios/Podfile", "w") as f:
+                      f.write(pfc2)
+                  print("Podfile iOS platform bumped to 13.0")
           print("Xcode project patched for manual signing. Sign settings now:")
           for line in c.splitlines():
               if "CODE_SIGN_STYLE" in line or "DEVELOPMENT_TEAM" in line or "PROVISIONING_PROFILE_SPECIFIER" in line or "CODE_SIGN_IDENTITY" in line:
@@ -740,7 +752,7 @@ jobs:
           echo "=== showBuildSettings (key values) ==="
           xcrun xcodebuild -project ios/Runner.xcodeproj -scheme Runner -configuration Release -destination "generic/platform=iOS" -showBuildSettings > /tmp/sbs.log 2>&1
           echo "sbs exit=$?"
-          grep -E "^    (DEVELOPMENT_TEAM|CODE_SIGN_STYLE|PROVISIONING_PROFILE_SPECIFIER|CODE_SIGN_IDENTITY|PRODUCT_BUNDLE_IDENTIFIER) = " /tmp/sbs.log | sort -u
+          grep -E "^    (DEVELOPMENT_TEAM|CODE_SIGN_STYLE|PROVISIONING_PROFILE_SPECIFIER|CODE_SIGN_IDENTITY|PRODUCT_BUNDLE_IDENTIFIER|IPHONEOS_DEPLOYMENT_TARGET) = " /tmp/sbs.log | sort -u
           echo "=== xcodebuild errors (if any) ==="
           grep -iE "error" /tmp/sbs.log | head -10
           true
