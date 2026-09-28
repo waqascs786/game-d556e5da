@@ -54,6 +54,14 @@ jobs:
           PROJ="androidapp"
           flutter create --org "$ORG" --project-name "$PROJ" . 2>&1 | tail -5
 
+      - name: Upgrade Kotlin Gradle plugin (firebase_core 4.x needs KGP 2+)
+        run: |
+          if [ -f android/settings.gradle ]; then
+            sed -i.bak -E 's/id "org\.jetbrains\.kotlin\.android" version "[^"]+"/id "org.jetbrains.kotlin.android" version "2.1.0"/' android/settings.gradle
+            rm -f android/settings.gradle.bak
+            grep "kotlin.android" android/settings.gradle || true
+          fi
+
       - name: Restore source files
         run: |
           rm -rf lib
