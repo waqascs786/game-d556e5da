@@ -18,6 +18,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      APP_VERSION: ${{ secrets.APP_VERSION }}
+      APP_BUILD_NUMBER: ${{ secrets.APP_BUILD_NUMBER }}
+      APP_ICON_URL: ${{ secrets.APP_ICON_URL }}
     outputs:
       public_key: ${{ steps.upload.outputs.public_key }}
       apk_url: ${{ steps.release.outputs.apk_url }}
@@ -63,6 +67,50 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      - name: Download app icon
+        run: |
+          if [ -n "$APP_ICON_URL" ]; then
+            mkdir -p assets/icon
+            if curl -fsSL "$APP_ICON_URL" -o assets/icon/app_icon.png; then
+              echo "App icon downloaded"
+            else
+              echo "Icon download failed - using default Flutter icon"
+              rm -f assets/icon/app_icon.png
+            fi
+          else
+            echo "No APP_ICON_URL secret - using default Flutter icon"
+          fi
+
+      - name: Crop icon to square (if needed)
+        run: |
+          if [ -f assets/icon/app_icon.png ]; then
+            dims=$(identify -format "%w %h" assets/icon/app_icon.png 2>/dev/null || true)
+            if [ -n "$dims" ]; then
+              w=${dims% *}
+              h=${dims#* }
+              if [[ "$w" =~ ^[0-9]+$ && "$h" =~ ^[0-9]+$ && "$w" != "$h" ]]; then
+                m=$w
+                if [ "$h" -lt "$w" ]; then m=$h; fi
+                if convert assets/icon/app_icon.png -gravity Center -extent "${m}x${m}" assets/icon/app_icon_square.png; then
+                  mv assets/icon/app_icon_square.png assets/icon/app_icon.png
+                  echo "Cropped non-square icon to ${m}x${m}"
+                else
+                  echo "Icon crop failed - continuing with original"
+                fi
+              else
+                echo "Icon already square (${w}x${h})"
+              fi
+            fi
+          fi
+
+      - name: Generate native launcher icons
+        run: |
+          if [ -f assets/icon/app_icon.png ] && [ -f flutter_icons_android.yaml ]; then
+            dart run flutter_launcher_icons -f flutter_icons_android.yaml || echo "WARNING: launcher icon generation failed, continuing with default icons"
+          else
+            echo "Skipping launcher icon generation"
+          fi
+
       - name: Set app name
         run: |
           python3 - << 'PY'
@@ -96,10 +144,10 @@ jobs:
         run: flutter build apk --debug
 
       - name: Build Android release APK
-        run: flutter build apk --release
+        run: flutter build apk --release --build-name="${APP_VERSION:-1.0.0}" --build-number="${APP_BUILD_NUMBER:-1}"
 
       - name: Build Android release AAB
-        run: flutter build appbundle --release
+        run: flutter build appbundle --release --build-name="${APP_VERSION:-1.0.0}" --build-number="${APP_BUILD_NUMBER:-1}"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
