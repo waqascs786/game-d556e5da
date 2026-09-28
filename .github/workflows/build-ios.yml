@@ -703,18 +703,18 @@ jobs:
           inside = len(re.findall(r"buildSettings = \{[^}]*DEVELOPMENT_TEAM = " + re.escape(TEAM), c, re.S))
           if inside < 3:
               print("::error::DEVELOPMENT_TEAM not found inside buildSettings for all configs (%d/3)" % inside); sys.exit(1)
-          # App Store Connect rejects deployment targets below iOS 13
-          c = re.sub(r"IPHONEOS_DEPLOYMENT_TARGET = 1[0-2]\.[0-9]+;", "IPHONEOS_DEPLOYMENT_TARGET = 13.0;", c)
+          # FirebaseIOSSDK 12 requires iOS 15+; App Store Connect accepts 13-27.2
+          c = re.sub(r"IPHONEOS_DEPLOYMENT_TARGET = 1[0-4]\.[0-9]+;", "IPHONEOS_DEPLOYMENT_TARGET = 15.0;", c)
           with open(pbx, "w") as f:
               f.write(c)
           if os.path.exists("ios/Podfile"):
               with open("ios/Podfile") as f:
                   pfc = f.read()
-              pfc2 = re.sub(r"platform :ios, '1[0-2]\.[0-9]+'", "platform :ios, '13.0'", pfc)
+              pfc2 = re.sub(r"platform :ios, '1[0-4]\.[0-9]+'", "platform :ios, '15.0'", pfc)
               if pfc2 != pfc:
                   with open("ios/Podfile", "w") as f:
                       f.write(pfc2)
-                  print("Podfile iOS platform bumped to 13.0")
+                  print("Podfile iOS platform bumped to 15.0")
           print("Xcode project patched for manual signing. Sign settings now:")
           for line in c.splitlines():
               if "CODE_SIGN_STYLE" in line or "DEVELOPMENT_TEAM" in line or "PROVISIONING_PROFILE_SPECIFIER" in line or "CODE_SIGN_IDENTITY" in line:
@@ -748,7 +748,7 @@ jobs:
         run: |
           if [ ! -f ios/Podfile ]; then
             cat > ios/Podfile << 'PODTEMPLATE'
-          platform :ios, '13.0'
+          platform :ios, '15.0'
 
           # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
           ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -797,8 +797,8 @@ jobs:
           mark = "MARKER-strip-unsupported-G-flags"
           pf = "ios/Podfile"
           pfc = open(pf).read()
-          pfc = re.sub(r"(?m)^#\s*platform :ios, '[^']+'", "platform :ios, '13.0'", pfc)
-          pfc = re.sub(r"(?m)^(platform :ios, )'1[0-2]\.[0-9]+'", r"\g<1>'13.0'", pfc)
+          pfc = re.sub(r"(?m)^#\s*platform :ios, '[^']+'", "platform :ios, '15.0'", pfc)
+          pfc = re.sub(r"(?m)^(platform :ios, )'1[0-4]\.[0-9]+'", r"\g<1>'15.0'", pfc)
           if mark not in pfc:
               hook = "\n".join([
                   "  # " + mark,
@@ -852,7 +852,7 @@ jobs:
               else:
                   pfc = pfc.rstrip("\n") + "\n\npost_install do |installer|\n" + hook + "\nend\n"
           open(pf, "w").write(pfc)
-          print("Podfile prepared: platform >= 13, -G flag strip hook installed")
+          print("Podfile prepared: platform >= 15, -G flag strip hook installed")
           PODINJECT
 
       - name: Probe Xcode build settings
