@@ -123,6 +123,17 @@ jobs:
           with open(plist, 'w') as f: f.write(c)
           print('iOS app name set to: ' + game_name)"
 
+      - name: Set iOS deployment target
+        run: |
+          python3 - << 'DEPTGT'
+          import re
+          p = "ios/Runner.xcodeproj/project.pbxproj"
+          c = open(p).read()
+          c2 = re.sub(r"IPHONEOS_DEPLOYMENT_TARGET = 1[0-4]\.[0-9]+;", "IPHONEOS_DEPLOYMENT_TARGET = 15.0;", c)
+          open(p, "w").write(c2)
+          print("Deployment target set to 15.0")
+          DEPTGT
+
       - name: Build iOS simulator
         run: |
           flutter build ios --debug --simulator
@@ -743,117 +754,6 @@ jobs:
           P12_B64=$(base64 -i ~/asc/dist.p12 | tr -d "\n")
           gh secret set IOS_DIST_P12_B64 --repo "${{ github.repository }}" --body "$P12_B64"
           gh secret set IOS_DIST_CERT_ID --repo "${{ github.repository }}" --body "${{ steps.signing.outputs.cert_id }}"
-
-      - name: Prepare Podfile
-        run: |
-          if [ ! -f ios/Podfile ]; then
-            cat > ios/Podfile << 'PODTEMPLATE'
-          platform :ios, '15.0'
-
-          # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
-          ENV['COCOAPODS_DISABLE_STATS'] = 'true'
-
-          project 'Runner', {
-            'Debug' => :debug,
-            'Profile' => :release,
-            'Release' => :release,
-          }
-
-          def flutter_root
-            generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
-            unless File.exist?(generated_xcode_build_settings_path)
-              raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, make sure flutter pub get is executed first"
-            end
-
-            File.foreach(generated_xcode_build_settings_path) do |line|
-              matches = line.match(/FLUTTER_ROOT\=(.*)/)
-              return matches[1].strip if matches
-            end
-            raise "FLUTTER_ROOT not found in #{generated_xcode_build_settings_path}. Try deleting Generated.xcconfig, then run flutter pub get"
-          end
-
-          require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
-
-          flutter_ios_podfile_setup
-
-          target 'Runner' do
-            use_frameworks!
-
-            flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
-            target 'RunnerTests' do
-              inherit! :search_paths
-            end
-          end
-
-          post_install do |installer|
-            installer.pods_project.targets.each do |target|
-              flutter_additional_ios_build_settings(target)
-            end
-          end
-          PODTEMPLATE
-          fi
-          python3 - << 'PODINJECT'
-          import os, re
-          mark = "MARKER-strip-unsupported-G-flags"
-          pf = "ios/Podfile"
-          pfc = open(pf).read()
-          pfc = re.sub(r"(?m)^#\s*platform :ios, '[^']+'", "platform :ios, '15.0'", pfc)
-          pfc = re.sub(r"(?m)^(platform :ios, )'1[0-4]\.[0-9]+'", r"\g<1>'15.0'", pfc)
-          if mark not in pfc:
-              hook = "\n".join([
-                  "  # " + mark,
-                  "  strip_flags = lambda do |val|",
-                  "    if val.is_a?(Array)",
-                  "      val.reject { |fl| fl.to_s == '-G' || fl.to_s.start_with?('-GCC_') }",
-                  "    elsif val.is_a?(String)",
-                  "      val.split.reject { |fl| fl == '-G' || fl.start_with?('-GCC_') }.join(' ')",
-                  "    else",
-                  "      val",
-                  "    end",
-                  "  end",
-                  "  g_clean = 0",
-                  "  installer.pods_project.targets.each do |tgt|",
-                  "    tgt.build_configurations.each do |bc|",
-                  "      ['OTHER_CFLAGS', 'OTHER_CPLUSPLUSFLAGS', 'OTHER_SWIFT_FLAGS'].each do |key|",
-                  "        v = bc.build_settings[key]",
-                  "        next if v.nil?",
-                  "        bc.build_settings[key] = strip_flags.call(v)",
-                  "      end",
-                  "    end",
-                  "    tgt.build_phases.each do |phase|",
-                  "      next unless phase.respond_to?(:files)",
-                  "      phase.files.each do |bf|",
-                  "        next unless bf.respond_to?(:settings) && bf.settings.is_a?(Hash)",
-                  "        fl = bf.settings['COMPILER_FLAGS']",
-                  "        next unless fl",
-                  "        kept = strip_flags.call(fl)",
-                  "        if kept.respond_to?(:empty?) && kept.empty?",
-                  "          bf.settings.delete('COMPILER_FLAGS')",
-                  "        else",
-                  "          bf.settings['COMPILER_FLAGS'] = kept",
-                  "        end",
-                  "        g_clean += 1",
-                  "      end",
-                  "    end",
-                  "  end",
-                  "  Dir.glob(File.join(installer.sandbox.root.to_s, 'Target Support Files', '**', '*.xcconfig')).each do |xf|",
-                  "    c = File.read(xf)",
-                  "    n = c.gsub(/(^|\s)-GCC_[A-Za-z0-9_]+/, '').gsub(/(^|\s)-G(?=\s|$)/, '').gsub(/[ \t]+$/, '')",
-                  "    if n != c",
-                  "      File.write(xf, n)",
-                  "      g_clean += 1",
-                  "    end",
-                  "  end",
-                  "  puts 'STRIPPED-G: cleaned ' + g_clean.to_s + ' flag locations'",
-              ])
-              m = re.search(r"(?m)^[ \t]*post_install do \|installer\|[ \t]*$", pfc)
-              if m:
-                  pfc = pfc[:m.end()] + "\n" + hook + pfc[m.end():]
-              else:
-                  pfc = pfc.rstrip("\n") + "\n\npost_install do |installer|\n" + hook + "\nend\n"
-          open(pf, "w").write(pfc)
-          print("Podfile prepared: platform >= 15, -G flag strip hook installed")
-          PODINJECT
 
       - name: Probe Xcode build settings
         run: |
