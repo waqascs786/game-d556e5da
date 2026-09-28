@@ -54,12 +54,17 @@ jobs:
           PROJ="androidapp"
           flutter create --org "$ORG" --project-name "$PROJ" . 2>&1 | tail -5
 
-      - name: Upgrade Kotlin Gradle plugin (firebase_core 4.x needs KGP 2+)
+      - name: Patch Android Gradle config (KGP 2.1 + minSdk 23 for Firebase 4.x)
         run: |
           if [ -f android/settings.gradle ]; then
             sed -i.bak -E 's/id "org\.jetbrains\.kotlin\.android" version "[^"]+"/id "org.jetbrains.kotlin.android" version "2.1.0"/' android/settings.gradle
             rm -f android/settings.gradle.bak
             grep "kotlin.android" android/settings.gradle || true
+          fi
+          if [ -f android/app/build.gradle ]; then
+            sed -i.bak -E 's/(minSdkVersion|minSdk) flutter\.minSdkVersion/\1 23/' android/app/build.gradle
+            rm -f android/app/build.gradle.bak
+            grep -n "minSdk" android/app/build.gradle || true
           fi
 
       - name: Restore source files
