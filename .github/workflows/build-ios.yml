@@ -263,6 +263,8 @@ jobs:
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
       ASC_AUTH_KEY: ${{ secrets.ASC_AUTH_KEY }}
       ASC_VERSION: ${{ secrets.ASC_VERSION }}
+      APP_VERSION: ${{ secrets.APP_VERSION }}
+      APP_ICON_URL: ${{ secrets.APP_ICON_URL }}
       IOS_DIST_P12_B64: ${{ secrets.IOS_DIST_P12_B64 }}
       IOS_DIST_CERT_ID: ${{ secrets.IOS_DIST_CERT_ID }}
       GH_PAT: ${{ secrets.GH_PAT }}
@@ -364,9 +366,50 @@ jobs:
           with open(plist, 'w') as f: f.write(c)
           print('iOS app name set to: ' + game_name)"
 
+      - name: Download app icon
+        run: |
+          if [ -n "$APP_ICON_URL" ]; then
+            mkdir -p assets/icon
+            if curl -fsSL "$APP_ICON_URL" -o assets/icon/app_icon.png; then
+              echo "App icon downloaded"
+            else
+              echo "Icon download failed - using default Flutter icon"
+              rm -f assets/icon/app_icon.png
+            fi
+          else
+            echo "No APP_ICON_URL secret - using default Flutter icon"
+          fi
+
+      - name: Crop icon to square (if needed)
+        run: |
+          if [ -f assets/icon/app_icon.png ]; then
+            w=$(sips -g pixelWidth assets/icon/app_icon.png 2>/dev/null | awk '/pixelWidth/ {print $2}')
+            h=$(sips -g pixelHeight assets/icon/app_icon.png 2>/dev/null | awk '/pixelHeight/ {print $2}')
+            if [[ "$w" =~ ^[0-9]+$ && "$h" =~ ^[0-9]+$ && "$w" != "$h" ]]; then
+              m=$w
+              if [ "$h" -lt "$w" ]; then m=$h; fi
+              if sips -c "$m" "$m" assets/icon/app_icon.png >/dev/null 2>&1; then
+                echo "Cropped non-square icon to ${m}x${m}"
+              else
+                echo "Icon crop failed - continuing with original"
+              fi
+            else
+              echo "Icon already square (${w}x${h})"
+            fi
+          fi
+
+      - name: Generate native launcher icons
+        run: |
+          if [ -f assets/icon/app_icon.png ] && [ -f flutter_icons_ios.yaml ]; then
+            flutter pub get >/dev/null 2>&1 || true
+            dart run flutter_launcher_icons -f flutter_icons_ios.yaml || echo "WARNING: launcher icon generation failed, continuing with default icons"
+          else
+            echo "Skipping launcher icon generation"
+          fi
+
       - name: Set app version
         run: |
-          plutil -replace CFBundleShortVersionString -string "${ASC_VERSION:-1.0.0}" ios/Runner/Info.plist
+          plutil -replace CFBundleShortVersionString -string "${APP_VERSION:-${ASC_VERSION:-1.0.0}}" ios/Runner/Info.plist
           plutil -replace CFBundleVersion -string "$(date +%s)" ios/Runner/Info.plist
           plutil -p ios/Runner/Info.plist | grep -E "CFBundleShortVersionString|CFBundleVersion" || true
 
