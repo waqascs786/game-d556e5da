@@ -520,6 +520,8 @@ jobs:
           # 3. Import certificate into a dedicated keychain (must end up in the user search list)
           KC_PASS = "buildkc"
           subprocess.run(["security", "create-keychain", "-p", KC_PASS, "build.keychain"], check=False, capture_output=True)
+          # default timeout is 300s which relocks the keychain mid-archive and hangs codesign
+          subprocess.run(["security", "set-keychain-settings", "-lut", "21600", "build.keychain"], check=False, capture_output=True)
           subprocess.run(["security", "unlock-keychain", "-p", KC_PASS, "build.keychain"], check=True, capture_output=True)
           kc_candidates = [os.path.expanduser(p) for p in ("~/Library/Keychains/build.keychain", "~/Library/Keychains/build.keychain-db", "~/Library/Keychains/build.keychain.keychain-db") if os.path.exists(os.path.expanduser(p))]
           kc_path = kc_candidates[0] if kc_candidates else "build.keychain"
@@ -746,6 +748,7 @@ jobs:
       - name: Build release IPA
         run: |
           set -o pipefail
+          security unlock-keychain -p buildkc build.keychain 2>/dev/null || security unlock-keychain -p buildkc ~/Library/Keychains/build.keychain-db 2>/dev/null || true
           flutter build ipa --release --export-options-plist ~/asc/ExportOptions.plist 2>&1 | tee /tmp/build.log || {
             echo "REPORT_ERROR=$(grep -m1 -E 'error:|Error|FAILURE|No valid code signing|No development certificates|requires a development team' /tmp/build.log | head -c 400)" >> "$GITHUB_ENV"
             exit 1
