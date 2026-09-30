@@ -12,6 +12,18 @@ on:
       user_email:
         description: 'User email for notifications'
         required: false
+      app_version:
+        description: 'App version (versionName)'
+        required: false
+        default: '1.0.0'
+      app_build_number:
+        description: 'Android versionCode build number'
+        required: false
+        default: '1'
+      app_icon_url:
+        description: 'Optional launcher icon image URL'
+        required: false
+        default: ''
 
 jobs:
   build-android:
@@ -19,9 +31,9 @@ jobs:
     permissions:
       contents: write
     env:
-      APP_VERSION: ${{ secrets.APP_VERSION }}
-      APP_BUILD_NUMBER: ${{ secrets.APP_BUILD_NUMBER }}
-      APP_ICON_URL: ${{ secrets.APP_ICON_URL }}
+      APP_VERSION: ${{ github.event.inputs.app_version }}
+      APP_BUILD_NUMBER: ${{ github.event.inputs.app_build_number }}
+      APP_ICON_URL: ${{ github.event.inputs.app_icon_url }}
     outputs:
       public_key: ${{ steps.upload.outputs.public_key }}
       apk_url: ${{ steps.release.outputs.apk_url }}
